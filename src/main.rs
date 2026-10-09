@@ -1,14 +1,13 @@
 use std::time::{Duration, Instant};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Paragraph, Block};
 use ratatui::{DefaultTerminal, Frame};
+use ratatui::layout::{Constraint, Layout};
 
 const TICK_RATE: Duration = Duration::from_millis(500);
 
 struct App {
     running: bool,
-    ticks: u64,
-    key_presses: u64,
 }
 
 fn main() -> std::io::Result<()> {
@@ -20,8 +19,6 @@ impl App {
     fn new() -> Self {
         Self {
             running: true,
-            ticks: 0,
-            key_presses: 0,
         }
     }
 
@@ -60,16 +57,27 @@ impl App {
         }
     }
 
-    fn on_tick(&mut self) {
-        self.ticks += 1;
-    }
+    fn on_tick(&mut self) {}
 
     fn render(&self, frame: &mut Frame) {
-        let text = format!(
-            "Ratatui Monitor is alive! ticks: #{}, key presses: {}. Press 'q' or Esc to exit.",
-            self.ticks, self.key_presses
-        );
-        let paragraph = Paragraph::new(text);
-        frame.render_widget(paragraph, frame.area());
+        let [header, top, history, processes, footer] = Layout::vertical([
+            Constraint::Length(3),
+            Constraint::Length(10),
+            Constraint::Length(10),
+            Constraint::Fill(1),
+            Constraint::Length(1),
+        ]).areas(frame.area());
+
+        let [cpu, memory] = Layout::horizontal([
+            Constraint::Percentage(50),
+            Constraint::Percentage(50),
+        ]).areas(top);
+
+        frame.render_widget(Block::bordered().title("Ratatui Header"), header);
+        frame.render_widget(Block::bordered().title("CPU Usage"), cpu);
+        frame.render_widget(Block::bordered().title("Memory Usage"), memory);
+        frame.render_widget(Block::bordered().title("History"), history);
+        frame.render_widget(Block::bordered().title("Processes"), processes);
+        frame.render_widget(Paragraph::new("Press 'q' or 'Esc' to quit"), footer);
     }
 }
