@@ -80,7 +80,7 @@ impl App {
         frame.render_widget(panel("Memory Usage"), memory);
         frame.render_widget(panel("History"), history);
         frame.render_widget(panel("Processes"), processes);
-        frame.render_widget(Paragraph::new("Press 'q' or 'Esc' to quit"), footer);
+        self.render_footer(frame, footer);
     }
 
     fn render_header(&self, frame: &mut Frame, area: Rect) {
@@ -96,6 +96,25 @@ impl App {
             .border_style(MUTED);
 
         frame.render_widget(Paragraph::new(line).block(block), area);
+    }
+
+    fn render_footer(&self, frame: &mut Frame, area: Rect) {
+        let key = |k: &'static str, desc: &'static str| {
+            [
+                Span::styled(format!(" {k} "), Style::new().fg(Color::Black).bg(ACCENT)),
+                Span::styled(format!(" {desc} \t"), MUTED),
+            ]
+        };
+
+        let spans: Vec<Span> = [
+            key("q", "Quit"),
+            // key("Esc", "Quit"),
+        ]
+            .into_iter()
+            .flatten()
+            .collect();
+        
+        frame.render_widget(Paragraph::new(Line::from(spans)), area);
     }
 
 }
