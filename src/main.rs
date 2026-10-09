@@ -49,8 +49,6 @@ impl App {
             return;
         }
 
-        self.key_presses += 1;
-
         match key.code {
             KeyCode::Char('q') | KeyCode::Esc => self.running = false,
             _ => {}
