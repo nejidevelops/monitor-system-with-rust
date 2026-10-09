@@ -1,10 +1,14 @@
 use std::time::{Duration, Instant};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
-use ratatui::widgets::{Paragraph, Block};
+use ratatui::widgets::{Paragraph, Block, BorderType};
 use ratatui::{DefaultTerminal, Frame};
-use ratatui::layout::{Constraint, Layout};
+use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::{Color, Style, Stylize};
+use ratatui::text::{Line, Span};
 
 const TICK_RATE: Duration = Duration::from_millis(500);
+const MUTED: Color = Color::DarkGray;
+const ACCENT: Color = Color::LightBlue;
 
 struct App {
     running: bool,
@@ -71,11 +75,19 @@ impl App {
             Constraint::Percentage(50),
         ]).areas(top);
 
-        frame.render_widget(Block::bordered().title("Ratatui Header"), header);
-        frame.render_widget(Block::bordered().title("CPU Usage"), cpu);
-        frame.render_widget(Block::bordered().title("Memory Usage"), memory);
-        frame.render_widget(Block::bordered().title("History"), history);
-        frame.render_widget(Block::bordered().title("Processes"), processes);
+        frame.render_widget(panel("Ratatui Header"), header);
+        frame.render_widget(panel("CPU Usage"), cpu);
+        frame.render_widget(panel("Memory Usage"), memory);
+        frame.render_widget(panel("History"), history);
+        frame.render_widget(panel("Processes"), processes);
         frame.render_widget(Paragraph::new("Press 'q' or 'Esc' to quit"), footer);
     }
+
+}
+
+fn panel(title: &str) -> Block<'static> {
+    Block::bordered()
+        .border_type(BorderType::Rounded)
+        .border_style(MUTED)
+        .title(Line::from(format!(" {title} ")).fg(ACCENT).bold())
 }
