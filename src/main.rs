@@ -75,12 +75,27 @@ impl App {
             Constraint::Percentage(50),
         ]).areas(top);
 
-        frame.render_widget(panel("Ratatui Header"), header);
+        self.render_header(frame, header);
         frame.render_widget(panel("CPU Usage"), cpu);
         frame.render_widget(panel("Memory Usage"), memory);
         frame.render_widget(panel("History"), history);
         frame.render_widget(panel("Processes"), processes);
         frame.render_widget(Paragraph::new("Press 'q' or 'Esc' to quit"), footer);
+    }
+
+    fn render_header(&self, frame: &mut Frame, area: Rect) {
+        let sep = Span::styled(" | ", Style::new().fg(MUTED));
+        let line = Line::from(vec![
+            "Ratatui System Monitor".to_string().fg(ACCENT).bold(),
+            sep,
+            Span::raw("Live system monitor")
+        ]);
+
+        let block = Block::bordered()
+            .border_type(BorderType::Rounded)
+            .border_style(MUTED);
+
+        frame.render_widget(Paragraph::new(line).block(block), area);
     }
 
 }
