@@ -1,21 +1,26 @@
 use std::time::{Duration, Instant};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
-use ratatui::widgets::{Paragraph, Block, BorderType};
+use ratatui::widgets::{Paragraph, Block, BorderType, Gauge, LineGauge, Sparkline};
 use ratatui::{DefaultTerminal, Frame};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span};
-use sysinfo::{MINIMUM_CPU_UPDATE_INTERVAL, System};
+use sysinfo::{MINIMUM_CPU_UPDATE_INTERVAL, System, Disks};
+use std::collections::VecDeque;
 
 const TICK_RATE: Duration = Duration::from_millis(500);
 const MUTED: Color = Color::DarkGray;
 const ACCENT: Color = Color::LightBlue;
 
+const HISTORY_LEN: usize = 120;
+
 struct App {
     running: bool,
     system: System,
+    disks: Disks,
     host_name: String,
     os_name: String,
+    cpu_history: VecDeque<f64>,
 }
 
 fn main() -> std::io::Result<()> {
@@ -32,9 +37,10 @@ impl App {
         let mut App = Self {
             running: true,
             system,
-            // host_name: System::host_name().unwrap_or_else(|| "unknown".into()),
+            disks: Disks::new_with_refreshed_list(),
             host_name: "Bofulo".to_string(),
-            os_name: System::long_os_version().unwrap_or_else(|| "unknown OS".into())
+            os_name: System::long_os_version().unwrap_or_else(|| "unknown OS".into()),
+            cpu_history: VecDeque::with_capacity(HISTORY_LEN),
         };
 
         App.on_tick();
@@ -77,12 +83,19 @@ impl App {
     fn on_tick(&mut self) {
         self.system.refresh_cpu_usage();
         self.system.refresh_memory();
+        self.disks.refresh(true);
+        push_history(&mut self.cpu_history, self.system.global_cpu_usage() as f64);
     }
 
     fn render(&self, frame: &mut Frame) {
+        let core_rows = self.system.cpus().len().div_ceil(2) as u16;
+
+        let top_height = (core_rows + 3).max(5) + 2;
+
+
         let [header, top, history, processes, footer] = Layout::vertical([
             Constraint::Length(3),
-            Constraint::Length(10),
+            Constraint::Length(top_height),
             Constraint::Length(10),
             Constraint::Fill(1),
             Constraint::Length(1),
@@ -140,19 +153,56 @@ impl App {
 
     fn render_cpu(&self, frame: &mut Frame, area: Rect) {
         let average = self.system.global_cpu_usage();
-        let lines: Vec<Line> = self
-            .system
-            .cpus()
+        
+        let block = panel(&format!("CPU: {average:.0}%"));
+
+        let inner = block.inner(area);
+
+        let core_rows = self.system.cpus().len().div_ceil(2) as u16;
+
+        let [cores_area, spark_area] = Layout::vertical([
+            Constraint::Length(core_rows),
+            Constraint::Fill(1)
+        ]).spacing(2).areas(inner);
+
+        let [left, right] = Layout::horizontal([
+            Constraint::Fill(1),
+            Constraint::Fill(1)
+        ]).spacing(2).areas(cores_area);
+
+        for (i, cpu) in self.system.cpus().iter().enumerate() {
+            let usage = cpu.cpu_usage() as f64;
+            let column = if i % 2 == 0 {left} else {right};
+            let row = Rect{
+                y: column.y + (i/2) as u16,
+                height: 1,
+                ..column
+            };
+
+            let gauge = LineGauge::default()
+                .ratio((usage / 100.0).clamp(0.0, 1.0))
+                .label(format!("{i:>2} {usage:>3.0}%"))
+                .filled_symbol("█")
+                .unfilled_symbol("░")
+                .filled_style(level_color(usage))
+                .unfilled_style(MUTED);
+
+                frame.render_widget(gauge, row);
+        }
+
+        let width = spark_area.width as usize;
+        let skip = self.cpu_history.len().saturating_sub(width);
+
+        let data: Vec<u64> = self
+            .cpu_history
             .iter()
-            .enumerate()
-            .map(|(i, cpu)| {
-                Line::from(format!("Core {i:>2}\t{:>3.0}%", cpu.cpu_usage()))
-            })
+            .skip(skip)
+            .map(|v| *v as u64)
             .collect();
 
-        let block = panel(&format!("CPU Usage: {:.0}%", average));
+        let sparkline = Sparkline::default().data(&data).max(100).style(ACCENT);
 
-        frame.render_widget(Paragraph::new(lines).block(block), area);
+        frame.render_widget(sparkline, spark_area)
     }
 
     fn render_memory(&self, frame: &mut Frame, area: Rect) {
@@ -181,4 +231,45 @@ fn panel(title: &str) -> Block<'static> {
         .border_type(BorderType::Rounded)
         .border_style(MUTED)
         .title(Line::from(format!(" {title} ")).fg(ACCENT).bold())
+}
+
+fn level_color(percent: f64) -> Color {
+    if percent < 50.0 {
+        Color::Green
+    } else if percent < 80.0 {
+        Color::Yellow 
+    } else {
+        Color::Red
+    }
+}
+
+fn percent(used: u64, total: u64) -> f64 {
+    if total == 0 {
+        0.0
+    } else {
+        used as f64 / total as f64 * 100.0
+    }
+}
+
+fn used_gauge(name: &str, used: u64, total: u64) -> Gauge<'static> {
+    let pct = percent(used, total);
+    let gb = |bytes: u64| bytes as f64 / 1024.0 / 1024.0 / 1024.0;
+    
+    Gauge::default()
+        .ratio(pct / 100.0)
+        .label(format!(
+            "{name} {:.1} / {:.1} GB ({pct:.0}%)",
+            gb(used),
+            gb(total)
+        ))
+        .gauge_style(Style::new().fg(level_color(pct)).bg(Color::Black))
+        .use_unicode(true)
+}
+
+fn push_history(history: &mut VecDeque<f64>, value: f64) {
+    history.push_back(value);
+
+    if history.len() > HISTORY_LEN {
+        history.pop_front();
+    }
 }
