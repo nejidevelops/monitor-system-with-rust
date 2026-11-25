@@ -89,6 +89,8 @@ impl App {
         self.system.refresh_memory();
         self.disks.refresh(true);
         push_history(&mut self.cpu_history, self.system.global_cpu_usage() as f64);
+        let ram = percent(self.system.used_memory(), self.system.total_memory());
+        push_history(&mut self.ram_history, ram);
     }
 
     fn render(&self, frame: &mut Frame) {
